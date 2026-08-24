@@ -11,6 +11,7 @@ assignment (`ASSIGNMENT.md`) — the graded rubric is `evaluation_guide.md` and
 
 ```
 ASSIGNMENT.md                — the graded spec; evaluation_guide.md is the reviewer rubric
+HANDOVER.md                  — implementation kickoff briefing; read before writing any code
 ARCHITECTURE.md              — component docs, kept in sync with src/wallet_transfer/
 docs/decisions/adrs/         — MADR decision records; copy adr-000 for a new one
 src/wallet_transfer/         — application source (handlers/, services/, repositories/, domain/)
