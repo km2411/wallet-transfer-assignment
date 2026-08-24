@@ -1,11 +1,17 @@
 # Implementation Handover — Wallet Transfer Service
 
+> **Status: implementation complete.** This document is kept as the historical kickoff record —
+> the constraints in §2 and the schema in §3 are still accurate references, but the framing below
+> ("no code exists yet", ADR statuses, unchecked §7 boxes) describes the state *before*
+> implementation started, not the current one. `ARCHITECTURE.md` is the up-to-date component
+> reference; the ADRs themselves (now Accepted) are the source of truth for design decisions.
+
 This hands the design off to whichever agent(s) implement `src/wallet_transfer/`. All design work
-is done: ten ADRs, internally consistent, reviewed adversarially and fixed. **No code exists yet.**
-Your job is to implement, test, and verify against what's already decided — not to re-derive or
-re-litigate it. If something here conflicts with an ADR, the ADR is the source of truth; if two
-ADRs conflict with each other, that's a bug in this handover or a regression — stop and flag it,
-don't silently pick one.
+is done: ten ADRs, internally consistent, reviewed adversarially and fixed. Your job is to
+implement, test, and verify against what's already decided — not to re-derive or re-litigate it.
+If something here conflicts with an ADR, the ADR is the source of truth; if two ADRs conflict with
+each other, that's a bug in this handover or a regression — stop and flag it, don't silently pick
+one.
 
 ## 1. Required reading, in order
 
@@ -14,12 +20,13 @@ don't silently pick one.
    automated reviewer is primed to flag.
 3. `AGENTS.md` — hard rules, layering contract, forbidden patterns. Read this before writing a
    single line of code; it is binding, not advisory.
-4. `ARCHITECTURE.md` — current state (skeletal — you fill it in) and Known Limitations (the
-   deliberate scope cuts: no worker/queue, single currency, minimal observability, per-wallet
-   serialization ceiling). Don't try to "fix" any of these — they're intentional.
-5. `docs/decisions/adrs/adr-0001-*.md` through `adr-0010-*.md`, **in numeric order**. ADR-0001 is
-   Accepted; ADR-0002–0010 are Proposed (implementing them correctly is what promotes them to
-   Accepted — don't flip the status yourself until the tests in §7 actually pass).
+4. `ARCHITECTURE.md` — current state (now filled in — Executive Summary, System Overview, a `##`
+   section per module) and Known Limitations (the deliberate scope cuts: no worker/queue, single
+   currency, minimal observability, per-wallet serialization ceiling). Don't try to "fix" any of
+   these — they're intentional.
+5. `docs/decisions/adrs/adr-0001-*.md` through `adr-0010-*.md`, **in numeric order**. All ten are
+   now Accepted — each was flipped only once its own governing tests in §6 were green, not as a
+   bulk change.
 
 ## 2. Non-negotiable correctness constraints
 
@@ -155,6 +162,11 @@ against that contract. This order is also what makes the parallel split in §5 p
 
 ## 5. Suggested agent decomposition
 
+> Not what actually happened — implementation ran sequentially, one step of §4 at a time in a
+> single session, reviewable incrementally rather than as several parallel diffs. Left here as a
+> record of the option that was considered and explicitly declined, not a description of the
+> real history.
+
 Dependency-ordered; agents at the same tier can run in parallel.
 
 | Agent | Owns | Depends on | Gate |
@@ -218,22 +230,28 @@ Agent G is the one that should actually run last and holds the "definition of do
 
 ## 7. Definition of done
 
-- [ ] `just ci` green — lint (ruff + mypy + `lint-imports` against `.importlinter`), format-check,
+- [x] `just ci` green — lint (ruff + mypy + `lint-imports` against `.importlinter`), format-check,
       full test tier (not just the fast fake-backed service tests).
-- [ ] Every scenario in §6 passes.
-- [ ] `.importlinter`'s handler → service → repository → domain contract holds — no violations.
-- [ ] `ARCHITECTURE.md` has a filled-in Executive Summary, System Overview diagram, and a `##`
+- [x] Every scenario in §6 passes.
+- [x] `.importlinter`'s handler → service → repository → domain contract holds — no violations.
+- [x] `ARCHITECTURE.md` has a filled-in Executive Summary, System Overview diagram, and a `##`
       section for every top-level module.
-- [ ] OpenAPI drift check passes in CI.
-- [ ] `scripts/simulate.py` run manually against `docker-compose.yml` Postgres — balance
-      reconciliation passes.
-- [ ] Commit messages are conventional (`feat:`/`fix:`/`docs:`/`test:`/`refactor:`/`chore:`) —
+- [x] OpenAPI drift check passes — verified locally (`just ci`'s `check-openapi-drift` step);
+      hasn't run in GitHub Actions yet since the branch isn't pushed and no PR is open.
+- [x] `scripts/simulate.py` run manually against `docker-compose.yml` Postgres — balance
+      reconciliation passes. Verified live via `just demo` + `just simulate` (and again at
+      `--fan-in 100`), same result both times.
+- [x] Commit messages are conventional (`feat:`/`fix:`/`docs:`/`test:`/`refactor:`/`chore:`) —
       graded explicitly.
 - [ ] AI usage disclosure (tool, how it's generally used, full session transcript or prompt list)
-      compiled and added to the PR — do this as you go, not at the end.
+      compiled and added to the PR — do this as you go, not at the end. A draft
+      (`AI_USAGE.md`, uncommitted) exists locally; the human is handling the PR's actual AI
+      disclosure content directly, with session transcripts attached as PR comments split by
+      phase, rather than via that draft file.
 - [ ] PR opened into `main` using `.github/pull_request_template.md`, explaining schema design,
-      idempotency strategy, concurrency handling, and assumptions/tradeoffs.
-- [ ] Each ADR's status flipped from Proposed to Accepted only once its own tests in §6 are green
+      idempotency strategy, concurrency handling, and assumptions/tradeoffs. Deliberately not
+      done yet — holding for explicit go-ahead before pushing the branch or opening anything.
+- [x] Each ADR's status flipped from Proposed to Accepted only once its own tests in §6 are green
       — don't bulk-flip statuses before that's actually true.
 
 ## 8. When you find something this document doesn't cover

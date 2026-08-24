@@ -11,14 +11,17 @@ assignment (`ASSIGNMENT.md`) — the graded rubric is `evaluation_guide.md` and
 
 ```
 ASSIGNMENT.md                — the graded spec; evaluation_guide.md is the reviewer rubric
-HANDOVER.md                  — implementation kickoff briefing; read before writing any code
+HANDOVER.md                  — implementation kickoff briefing (historical — see its own status note)
 ARCHITECTURE.md              — component docs, kept in sync with src/wallet_transfer/
 docs/decisions/adrs/         — MADR decision records; copy adr-000 for a new one
 src/wallet_transfer/         — application source (handlers/, services/, repositories/, domain/)
-tests/                       — pytest suite
+openapi/spec.yaml            — hand-authored API contract; handlers/generated_models.py is built from it
+tests/                       — pytest suite (domain/, service/, repository/, e2e/ tiers)
+scripts/                     — check_openapi_drift.py (CI gate) and simulate.py (manual demo tool)
+db/migrations/, db/seed/     — Flyway schema migrations and the flag-gated demo-wallet seed
 .importlinter                — enforces handler -> service -> repository -> domain layering
 .agents/skills/               — reusable Claude Code skills; .claude/skills/ symlinks here
-docker-compose.yml           — local Postgres for manual dev/exploration (not a CI dependency)
+docker-compose.yml, Dockerfile — Postgres + the app container itself (`just demo`/`just up`)
 ```
 
 ## Hard rules
@@ -30,9 +33,10 @@ docker-compose.yml           — local Postgres for manual dev/exploration (not 
 - Every transfer writes exactly two ledger entries (one DEBIT, one CREDIT) in the same
   transaction as the balance/state update. Never split across transactions or add a ledger entry
   without an owning transfer.
-- Concurrency strategy for same-wallet debits: see the concurrency ADR once written — lock
-  wallets in a consistent order (e.g. sorted by `wallet_id`) to avoid deadlocks between two
-  transfers that touch the same pair of wallets in opposite directions.
+- Concurrency strategy for same-wallet debits: ADR-0003 — lock wallets in ascending `wallet_id`
+  order, *before* writing anything that references them (not after — see ADR-0002/0003's
+  wallet-locking-order note), to avoid deadlocks between two transfers that touch the same pair
+  of wallets in opposite directions.
 - Handlers: request validation + transport mapping only. No business logic, no direct
   repository access.
 - Repositories: persistence only. No workflow decisions (e.g. no "if insufficient funds" branch
@@ -53,13 +57,16 @@ docker-compose.yml           — local Postgres for manual dev/exploration (not 
 
 ## How to work here
 
-- `just ci` before every push — lint, format-check, tests.
+- `just ci` before every push — lint, format-check, the full test tier (unit/domain, service
+  against the in-memory fake, repository/e2e against real Postgres via `testcontainers`), and the
+  OpenAPI drift check.
 - `just fmt` to auto-format.
-- `just install` after changing `requirements-dev.txt`.
+- `just install` after changing `requirements.txt` or `requirements-dev.txt`.
 - `just pre-commit-install` once, after cloning.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`) — commit
   message quality is explicitly graded (`evaluation_guide.md` "Development practices").
-- `docker compose up -d` for a local Postgres; copy `.env.example` to `.env`.
+- `just up` for a local Postgres, or `just demo` for the full containerized stack (Postgres + app,
+  with demo wallets seeded) — see the `/run-app` skill. Copy `.env.example` to `.env`.
 
 ## Architecture documentation
 

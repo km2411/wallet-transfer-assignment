@@ -3,7 +3,7 @@ flyway_image := "flyway/flyway:10-alpine"
 
 # Install dev dependencies
 install:
-    pip install -r requirements-dev.txt
+    pip install -r requirements.txt -r requirements-dev.txt
 
 # Apply schema migrations via Flyway against the docker-compose Postgres.
 # SEED_DEMO_DATA=true also applies db/seed/ (ADR-0010) — unset by default everywhere,
