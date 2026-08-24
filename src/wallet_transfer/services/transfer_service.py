@@ -42,6 +42,7 @@ class TransferService:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         max_attempts: int = 3,
         base_backoff_seconds: float = 0.05,
+        on_retry: Callable[[int, RetryableRepositoryError], Awaitable[None]] | None = None,
     ) -> None:
         self._uow_factory = uow_factory
         self._id_generator = id_generator
@@ -49,6 +50,10 @@ class TransferService:
         self._sleep = sleep
         self.max_attempts = max_attempts
         self._base_backoff_seconds = base_backoff_seconds
+        # Test-only synchronization seam (ADR-0003/CT7): fires right after an attempt rolls back
+        # on a retryable error, before the next attempt starts, so a test can deterministically
+        # land a client-initiated retry in that exact gap instead of guessing at a sleep duration.
+        self._on_retry = on_retry
 
     async def create_transfer(self, request: CreateTransferRequest) -> Transfer:
         fingerprint = compute_request_fingerprint(
@@ -77,6 +82,8 @@ class TransferService:
                 return await self._attempt(request, fingerprint, pending_transfer)
             except RetryableRepositoryError as error:
                 last_error = error
+                if self._on_retry is not None:
+                    await self._on_retry(attempt, error)
                 continue
 
         assert last_error is not None
