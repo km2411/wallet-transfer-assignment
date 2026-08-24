@@ -82,18 +82,22 @@ def _apply_migrations(network_name: str) -> None:
 
 
 @pytest.fixture
-async def pool(postgres_container: PostgresContainer) -> AsyncIterator[asyncpg.Pool]:
+def postgres_dsn(postgres_container: PostgresContainer) -> str:
+    return (
+        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
+        f"{postgres_container.get_container_host_ip()}:"
+        f"{postgres_container.get_exposed_port(5432)}/{POSTGRES_DB}"
+    )
+
+
+@pytest.fixture
+async def pool(postgres_dsn: str) -> AsyncIterator[asyncpg.Pool]:
     # Function-scoped, not session-scoped: an asyncpg pool is bound to the event loop it was
     # created on, and pytest-asyncio gives each test function its own loop by default. Recreating
     # the pool per test keeps everything on one loop and sidesteps cross-loop errors entirely —
     # the container itself (session-scoped, no event loop involved) is what's actually expensive
     # to keep, not the pool.
-    dsn = (
-        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@"
-        f"{postgres_container.get_container_host_ip()}:"
-        f"{postgres_container.get_exposed_port(5432)}/{POSTGRES_DB}"
-    )
-    db_pool = await create_pool(dsn, min_size=2, max_size=120)
+    db_pool = await create_pool(postgres_dsn, min_size=2, max_size=120)
     try:
         yield db_pool
     finally:
