@@ -52,10 +52,10 @@ docker-compose.yml           — local Postgres for manual dev/exploration (not 
 
 ## How to work here
 
-- `make ci` before every push — lint, format-check, tests.
-- `make fmt` to auto-format.
-- `make install` after changing `requirements-dev.txt`.
-- `make pre-commit-install` once, after cloning.
+- `just ci` before every push — lint, format-check, tests.
+- `just fmt` to auto-format.
+- `just install` after changing `requirements-dev.txt`.
+- `just pre-commit-install` once, after cloning.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`) — commit
   message quality is explicitly graded (`evaluation_guide.md` "Development practices").
 - `docker compose up -d` for a local Postgres; copy `.env.example` to `.env`.

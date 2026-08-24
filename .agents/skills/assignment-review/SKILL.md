@@ -25,7 +25,7 @@ then ask before editing — this is a review pass, not an auto-fixer.
      duplicate side effects), and specifically: does the idempotency check happen in the *same*
      transaction as the write it's guarding, or could two concurrent identical requests both
      pass the check before either commits?
-   - **Layering** — run `make lint` (covers `lint-imports` against `.importlinter`'s
+   - **Layering** — run `just lint` (covers `lint-imports` against `.importlinter`'s
      handler->service->repository->domain contract) and read the diff for business logic in a
      handler, or workflow decisions (e.g. insufficient-funds branching) in a repository.
    - **Tests** — do they assert on behavior (response bodies, DB state) rather than internals?
