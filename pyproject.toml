@@ -17,6 +17,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# Generated from openapi/spec.yaml (ADR-0005) — never hand-edited, so its embedded OpenAPI
+# description text isn't wrapped to the project's line length.
+"src/wallet_transfer/handlers/generated_models.py" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true

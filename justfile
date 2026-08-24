@@ -24,6 +24,19 @@ migrate:
         "-locations=${locations}" \
         migrate
 
+# Regenerate the handler-layer Pydantic models from openapi/spec.yaml (ADR-0005).
+# Never hand-edit the output — it's a pure build artifact, regenerated on every spec change.
+generate-models:
+    datamodel-codegen \
+        --input openapi/spec.yaml \
+        --input-file-type openapi \
+        --output {{src}}/handlers/generated_models.py \
+        --output-model-type pydantic_v2.BaseModel \
+        --target-python-version 3.12 \
+        --use-schema-description \
+        --use-annotated \
+        --disable-timestamp
+
 # Lint (ruff + mypy + import-linter, once src/ exists)
 lint:
     ruff check .
