@@ -24,6 +24,35 @@ migrate:
         "-locations=${locations}" \
         migrate
 
+# Start the docker-compose Postgres and wait for it to accept connections.
+up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker compose up -d postgres
+    until docker compose exec -T postgres pg_isready -U wallet -d wallet_transfer >/dev/null 2>&1; do
+        sleep 1
+    done
+
+# Stop the docker-compose services. The Postgres data volume persists (docker compose down -v
+# to also remove it).
+down:
+    docker compose down
+
+# Run the FastAPI app locally against .venv, for fast dev iteration — requires `just up` and
+# `just migrate` first.
+dev:
+    uvicorn wallet_transfer.handlers.app:create_app --factory --reload --port 8000
+
+# Full containerized demo stack (ADR-0003's interview demo): Postgres + schema + demo wallets
+# (ADR-0010) + the app itself, all via docker-compose.
+demo: up
+    SEED_DEMO_DATA=true just migrate
+    docker compose up -d --build app
+
+# Drive scripts/simulate.py's concurrent load against a running app (see `just demo`).
+simulate:
+    python scripts/simulate.py
+
 # Regenerate the handler-layer Pydantic models from openapi/spec.yaml (ADR-0005).
 # Never hand-edit the output — it's a pure build artifact, regenerated on every spec change.
 generate-models:

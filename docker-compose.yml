@@ -17,6 +17,22 @@ services:
     networks:
       - wallet_transfer_net
 
+  # Runs the app container itself. Does NOT run migrations (ADR-0004 — migrations are a
+  # deploy/setup-time concern via `just migrate`, never part of the service's runtime path), so
+  # `just migrate` (optionally SEED_DEMO_DATA=true) must be run before the app can serve requests
+  # against a fresh database. `just demo` sequences this correctly.
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://wallet:wallet@postgres:5432/wallet_transfer
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wallet_transfer_net
+
 volumes:
   wallet_pg_data:
 
