@@ -1,13 +1,13 @@
 ---
 kind: adr
-status: proposed
+status: accepted
 owner: Kartik Mittal
 last_reviewed: 2026-08-24
 ---
 
 # ADR-0009 — Stored wallet balance, not derived from the ledger at read time
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** Kartik Mittal (candidate)
 
 ## Context

@@ -1,13 +1,13 @@
 ---
 kind: adr
-status: proposed
+status: accepted
 owner: Kartik Mittal
 last_reviewed: 2026-08-24
 ---
 
 # ADR-0003 — Ordered pessimistic row locks with bounded retry for wallet debits
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** Kartik Mittal (candidate)
 
 ## Context

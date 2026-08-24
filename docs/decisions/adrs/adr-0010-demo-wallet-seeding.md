@@ -1,13 +1,13 @@
 ---
 kind: adr
-status: proposed
+status: accepted
 owner: Kartik Mittal
 last_reviewed: 2026-08-24
 ---
 
 # ADR-0010 — Demo wallet seeding: flag-gated, always-last Flyway migration
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** Kartik Mittal (candidate)
 
 ## Context

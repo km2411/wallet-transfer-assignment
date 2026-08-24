@@ -1,13 +1,13 @@
 ---
 kind: adr
-status: proposed
+status: accepted
 owner: Kartik Mittal
 last_reviewed: 2026-08-24
 ---
 
 # ADR-0004 — Schema design with DB-level invariants, versioned via Flyway
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** Kartik Mittal (candidate)
 
 ## Context

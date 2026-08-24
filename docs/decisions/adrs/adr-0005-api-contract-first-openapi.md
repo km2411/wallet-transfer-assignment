@@ -1,13 +1,13 @@
 ---
 kind: adr
-status: proposed
+status: accepted
 owner: Kartik Mittal
 last_reviewed: 2026-08-24
 ---
 
 # ADR-0005 — API contract-first development: hand-authored OpenAPI spec, generated models, Swagger UI
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** Kartik Mittal (candidate)
 
 ## Context
