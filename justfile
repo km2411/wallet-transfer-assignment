@@ -56,6 +56,10 @@ fmt:
 test:
     pytest
 
+# OpenAPI drift check (ADR-0005, E2) — required CI gate, not a pytest case.
+check-openapi-drift:
+    python scripts/check_openapi_drift.py
+
 # Run tests with coverage, once src/ exists
 test-cov:
     @if [ -d {{src}} ]; then pytest --cov=wallet_transfer --cov-report=term-missing; else echo "coverage: {{src}} not created yet, skipping"; fi
@@ -64,5 +68,5 @@ test-cov:
 pre-commit-install:
     pre-commit install
 
-# Full CI gate: lint, format-check, test
-ci: lint format-check test
+# Full CI gate: lint, format-check, test, OpenAPI drift
+ci: lint format-check test check-openapi-drift
