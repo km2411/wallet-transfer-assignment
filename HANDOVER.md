@@ -38,11 +38,16 @@ summary below — the "why" matters for judgment calls the summary can't cover.
   referenced transfer row exists (see next point). Get this wrong and the very first successful
   transfer throws a foreign-key violation. (ADR-0002, ADR-0004)
 - **Write order inside the one transaction per transfer attempt:** (1) pre-generate the transfer's
-  UUIDv7 id, (2) `INSERT` into `idempotency_records` referencing it, (3) `INSERT` the `transfers`
-  row with that same id, (4) lock both wallets ascending by `wallet_id`, (5) balance check, (6)
-  ledger inserts, (7) status update, (8) commit. All one transaction — a partial version of this
-  (e.g. two transactions, or idempotency record written outside the lock) reopens the exact race
-  idempotency exists to close. (ADR-0002, ADR-0003)
+  UUIDv7 id, (2) `INSERT` into `idempotency_records` referencing it, (3) lock both wallets
+  ascending by `wallet_id`, (4) `INSERT` the `transfers` row with that same id, (5) balance check,
+  (6) ledger inserts, (7) status update, (8) commit. All one transaction — a partial version of
+  this (e.g. two transactions, or idempotency record written outside the lock) reopens the exact
+  race idempotency exists to close. **Note the wallet lock now comes before the transfer insert,
+  not after** — an earlier draft had this reversed; real-Postgres testing (CT1/CT7) found that
+  order deadlocks, since `INSERT INTO transfers` takes an implicit, unordered `FOR KEY SHARE` lock
+  on each referenced wallet as part of its FK check, defeating the ascending-order guarantee the
+  explicit lock exists to provide. Locking first means that check has nothing left to contend
+  with. (ADR-0002, ADR-0003)
 - **Three different validation categories, three different places, do not conflate them:**
   - Malformed body → rejected at the handler boundary by the generated Pydantic models (ADR-0005).
     Service never sees it.

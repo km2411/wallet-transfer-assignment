@@ -54,6 +54,18 @@ Within a single database transaction per transfer attempt:
   **ascending `wallet_id` order**, regardless of transfer direction. This is what actually
   prevents the deadlock case: two opposite-direction transfers on the same pair would otherwise
   each hold one wallet's lock while waiting on the other's.
+- **This explicit lock must be acquired before the transfer row is inserted, not after (found via
+  real-Postgres testing during implementation — corrected alongside ADR-0002's matching note).**
+  `INSERT INTO transfers` takes an implicit `FOR KEY SHARE` lock on each wallet row it references,
+  as part of the FK check — acquired in whatever order the columns happen to be checked, not in
+  the ascending-`wallet_id` order above. Two concurrent attempts sharing a wallet can each hold
+  that implicit lock from their own transfer INSERT while blocked on the *explicit* `FOR UPDATE`
+  the other already holds via its own implicit lock — a real, repeatable `deadlock_detected`, not
+  a theoretical one. Locking first means the explicit `FOR UPDATE` is already the strongest lock
+  held on both rows by the time the transfer INSERT's own FK check runs against them, so that
+  check never has anything to contend with. The in-memory fake used for ST1-ST7 (ADR-0006) cannot
+  reproduce Postgres's implicit FK locking, which is exactly why this was only caught once CT1/CT7
+  ran against a real database, not before.
 - Set an explicit `lock_timeout` (e.g. 2s) for the transaction (`SET LOCAL lock_timeout`, once per
   transaction — scoping clarified on review). It governs every lock wait inside that transaction,
   not just the wallet `SELECT ... FOR UPDATE` calls: the same timeout also bounds how long a
@@ -62,9 +74,12 @@ Within a single database transaction per transfer attempt:
   error instead of queuing indefinitely.
 - The service layer wraps the transaction attempt in a **bounded retry** (e.g. up to 3 attempts,
   exponential backoff with jitter, via `asyncio.sleep()` — never a blocking sleep, per ADR-0007)
-  for three error classes: a `lock_timeout`, Postgres's own `deadlock_detected` (kept as
-  defense-in-depth — the ordering rule above should make this unreachable, but a future code path
-  that doesn't follow it would otherwise fail silently wrong instead of loudly retrying), and a
+  for three error classes: a `lock_timeout`, Postgres's own `deadlock_detected` (originally framed
+  as defense-in-depth on the theory that the ordering rule above made it unreachable — revised
+  after real-Postgres testing showed it *was* reachable, via the implicit-FK-lock interaction
+  documented above, until the wallet-locking-order fix; kept in the retryable set both as the fix
+  for that and as defense-in-depth against any future code path that doesn't follow the ordering
+  rule), and a
   connection-pool-acquire timeout (added on review — see the pool-sizing note below for why this
   is a distinct failure mode, not covered by the other two). **Insufficient funds is not
   retried** — it's a legitimate terminal result (`FAILED`), not a transient error, and is returned
@@ -81,12 +96,14 @@ Within a single database transaction per transfer attempt:
 - **Wallet existence is not a business-rule outcome (fixed on review — see ADR-0002's validation
   boundary).** `SELECT ... FOR UPDATE WHERE id = :wallet_id` returning zero rows means the wallet
   doesn't exist. This is discovered *inside* the transaction (locking is the only place that
-  actually needs to look the row up), but it is handled by rolling back the **entire** transaction
-  — idempotency-record insert included — and returning `404`, not by persisting a `FAILED`
-  transfer. A transfer row referencing a nonexistent wallet cannot be inserted at all (FK
-  constraint, ADR-0004), so there is no other consistent option. A retry with the same key after
-  this simply re-runs the same check and fails the same way — safe without needing a stored
-  record, same reasoning as ADR-0002's other pure-validation failures.
+  actually needs to look the row up) and *before* the transfer row is inserted (per the
+  wallet-locking-order fix above), and it is handled by rolling back the **entire** transaction —
+  idempotency-record insert included — and returning `404`, not by persisting a `FAILED` transfer.
+  `transfers.from_wallet_id`/`to_wallet_id` being foreign keys (ADR-0004) still makes a transfer
+  row referencing a nonexistent wallet unrepresentable as defense-in-depth; it's the explicit lock
+  query, not that constraint, that this path actually relies on to find the wallet missing. A
+  retry with the same key after this simply re-runs the same check and fails the same way — safe
+  without needing a stored record, same reasoning as ADR-0002's other pure-validation failures.
 - **Retry exhaustion.** If all bounded-retry attempts still hit `lock_timeout`/`deadlock_detected`,
   the entire transaction (idempotency record included) has rolled back every time — nothing is
   persisted. The API returns a distinct, retryable `503` rather than a generic error. Because

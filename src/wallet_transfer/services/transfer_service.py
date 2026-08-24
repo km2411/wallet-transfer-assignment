@@ -104,8 +104,18 @@ class TransferService:
                 assert cached is not None
                 return cached
 
-            await uow.transfers.insert(pending_transfer)
-
+            # Wallets are locked BEFORE the transfer row is inserted — not the order ADR-0002's
+            # prose originally described. Postgres takes an implicit FOR KEY SHARE lock on a
+            # referenced row for every FK column an INSERT touches, acquired in whatever order
+            # the columns are checked, not in the ascending-id order our own explicit locking
+            # uses below. Insert the transfer first and two concurrent attempts sharing a wallet
+            # can each hold that row's implicit FK lock from their own INSERT while waiting on
+            # the other's — a genuine deadlock (SQLSTATE 40P01) that the ascending lock order was
+            # supposed to make impossible. Locking first means our own FOR UPDATE already holds
+            # the strongest lock on both rows before the transfer INSERT's FK check ever runs, so
+            # that check is uncontended. Found via real-Postgres testing (CT1/CT7) — the in-memory
+            # fake can't reproduce Postgres's implicit FK locking, which is exactly why ADR-0006
+            # requires this tier to run against the real thing.
             wallets = await uow.wallets.get_two_for_update(
                 request.from_wallet_id, request.to_wallet_id
             )
@@ -119,6 +129,8 @@ class TransferService:
 
             from_wallet = wallets[request.from_wallet_id]
             to_wallet = wallets[request.to_wallet_id]
+
+            await uow.transfers.insert(pending_transfer)
 
             if from_wallet.balance < request.amount:
                 failed = pending_transfer.mark_failed("INSUFFICIENT_FUNDS", at=self._clock())

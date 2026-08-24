@@ -54,11 +54,25 @@ responding to the client.
   runs, not left to a database default. A plain (non-deferred) FK would reject the idempotency
   insert immediately, since the referenced transfer row wouldn't exist yet at statement time;
   declaring it `DEFERRABLE INITIALLY DEFERRED` pushes the check to commit, by which point the
-  transfer row (inserted immediately after, same transaction) exists. This was a genuine
-  contradiction between this ADR's write order and ADR-0004's original schema, found on review —
-  fixed by pre-generating the id rather than reordering the writes, which preserves the whole
-  point of inserting the idempotency record first: a losing concurrent duplicate is rejected at
-  the unique-key insert, before it ever touches a wallet lock.
+  transfer row (inserted later, same transaction — see the wallet-locking-order correction below
+  for exactly when) exists. This was a genuine contradiction between this ADR's write order and
+  ADR-0004's original schema, found on review — fixed by pre-generating the id rather than
+  reordering the writes, which preserves the whole point of inserting the idempotency record
+  first: a losing concurrent duplicate is rejected at the unique-key insert, before it ever
+  touches a wallet lock.
+- **Wallet locks now happen before the transfer row is inserted, not after (corrected during
+  implementation — see ADR-0003's matching note for the mechanism).** An earlier version of this
+  ADR had the transfer row inserted immediately after the idempotency record, with the wallet
+  locks following it. Real-Postgres testing (CT1/CT7, ADR-0006) found that order deadlocks under
+  concurrency: `INSERT INTO transfers` takes an implicit `FOR KEY SHARE` lock on each referenced
+  wallet row as part of the FK check, acquired in whatever order the columns are checked, not in
+  the ascending-`wallet_id` order the explicit locking step uses. Two concurrent attempts sharing
+  a wallet can each hold that implicit lock from their own transfer INSERT while waiting on the
+  explicit `FOR UPDATE` the other already holds via its own implicit lock — a genuine deadlock
+  (Postgres `deadlock_detected`), reproducible every time under real concurrency, invisible to the
+  in-memory fake used for the service-layer tests. Moving the explicit wallet lock earlier means
+  it's already the strongest lock held on those rows by the time the transfer INSERT's own FK
+  check runs, so that check is uncontended.
 - `idempotencyKey` is **required** on `POST /transfers`, not optional — a financial mutation
   endpoint with no dedup path by default is a worse default than requiring the field. (This is a
   reading of `ASSIGNMENT.md`'s "exactly-once semantics ... when an `idempotencyKey` is provided"
@@ -107,10 +121,14 @@ responding to the client.
   pre-validated (inconsistency fixed on review — see ADR-0003, ADR-0006's ST6/ST7).** A wallet's
   existence can't be known without a query, and the only query that runs is ADR-0003's locking
   `SELECT ... FOR UPDATE` — so this is necessarily discovered *after* the idempotency record has
-  already been inserted, not before the transaction begins. `transfers.from_wallet_id`/
-  `to_wallet_id` are foreign keys (ADR-0004), so a transfer row referencing a missing wallet can't
-  be inserted at all, `FAILED` or otherwise — which is why the entire transaction, idempotency
-  record included, rolls back, and the API returns `404`. See ADR-0003 for the mechanism.
+  already been inserted, not before the transaction begins. The locking query returning zero rows
+  for a wallet id is what's actually discovered here (corrected alongside the wallet-locking-order
+  fix above: this is now found *before* the transfer row is ever inserted, not via the FK
+  rejecting the insert as originally reasoned) — the entire transaction, idempotency record
+  included, rolls back, and the API returns `404`. `transfers.from_wallet_id`/`to_wallet_id` being
+  foreign keys (ADR-0004) still makes a transfer row referencing a missing wallet unrepresentable
+  at the schema level; it's just no longer the mechanism this path relies on to find that out. See
+  ADR-0003 for the locking mechanism.
 - **This is the same transaction as ADR-0003's locked critical section, not a second one** — the
   idempotency-record insert, wallet locks, balance check, ledger writes, and status update all
   commit or roll back together, as one unit. Splitting them into separate transactions would
