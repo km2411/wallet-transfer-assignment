@@ -237,7 +237,7 @@ Agent G is the one that should actually run last and holds the "definition of do
 - [x] `ARCHITECTURE.md` has a filled-in Executive Summary, System Overview diagram, and a `##`
       section for every top-level module.
 - [x] OpenAPI drift check passes — verified locally (`just ci`'s `check-openapi-drift` step);
-      hasn't run in GitHub Actions yet since the branch isn't pushed and no PR is open.
+      will also run in GitHub Actions once the PR is open (branch is pushed).
 - [x] `scripts/simulate.py` run manually against `docker-compose.yml` Postgres — balance
       reconciliation passes. Verified live via `just demo` + `just simulate` (and again at
       `--fan-in 100`), same result both times.
