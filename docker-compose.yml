@@ -14,6 +14,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - wallet_transfer_net
 
 volumes:
   wallet_pg_data:
+
+networks:
+  wallet_transfer_net:
+    name: wallet_transfer_net
