@@ -73,6 +73,9 @@ component — don't defer it.
 - `/new-adr` — scaffold a new ADR from the MADR template with the next sequential number.
 - `/assignment-review` — self-review the diff against `evaluation_guide.md` and
   `.github/copilot-instructions.md`'s rubric before opening the PR.
+- `/run-app` — launch the service (containerized demo stack or local `.venv` + uvicorn), apply
+  migrations with or without demo seed data, verify it's serving requests, and drive
+  `scripts/simulate.py`'s concurrency demo.
 
 ## AI disclosure
 
