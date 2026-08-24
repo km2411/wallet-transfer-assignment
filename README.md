@@ -2,6 +2,23 @@
 
 This repository is a reusable coding assignment template for evaluating backend engineers on wallet transfers, idempotency, concurrency control, and double-entry ledger design.
 
+## This submission
+
+Python + FastAPI + PostgreSQL (`asyncpg`), implemented against ten reviewed ADRs in
+`docs/decisions/adrs/` — start with `ARCHITECTURE.md` for the design (Executive Summary, System
+Overview diagram, one section per component) and `HANDOVER.md` for the implementation record.
+
+- **Run it:** `just demo` — full containerized stack (Postgres + app + seeded demo wallets). See
+  the `/run-app` skill (`.agents/skills/run-app/SKILL.md`) for both run modes and the concurrency
+  demo (`just simulate`).
+- **Test it:** `just ci` — lint, format-check, the full test suite (domain, service-layer against
+  an in-memory fake, repository/end-to-end against real Postgres via `testcontainers`), and the
+  OpenAPI drift check.
+- **Design docs:** `ARCHITECTURE.md`, `docs/decisions/adrs/adr-0001-*.md` through `adr-0010-*.md`
+  (all Accepted), `openapi/spec.yaml` for the API contract.
+
+The rest of this README describes the assignment template itself, not this submission.
+
 ## Included
 
 - `ASSIGNMENT.md` - candidate-facing prompt
