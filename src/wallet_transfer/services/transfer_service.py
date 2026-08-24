@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ from wallet_transfer.services.errors import (
     WalletNotFoundError,
 )
 from wallet_transfer.services.fingerprint import compute_request_fingerprint
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,15 +81,52 @@ class TransferService:
                 created_at=self._clock(),
             )
 
+            logger.debug(
+                "transfer attempt %d/%d starting: idempotency_key=%s",
+                attempt,
+                self.max_attempts,
+                request.idempotency_key,
+            )
+
             try:
-                return await self._attempt(request, fingerprint, pending_transfer)
+                result = await self._attempt(request, fingerprint, pending_transfer)
             except RetryableRepositoryError as error:
                 last_error = error
+                logger.warning(
+                    "transfer attempt %d/%d hit %s, retrying: idempotency_key=%s",
+                    attempt,
+                    self.max_attempts,
+                    type(error).__name__,
+                    request.idempotency_key,
+                )
                 if self._on_retry is not None:
                     await self._on_retry(attempt, error)
                 continue
+            except (WalletNotFoundError, IdempotencyKeyReusedError) as error:
+                logger.info(
+                    "transfer rejected on attempt %d: idempotency_key=%s reason=%s",
+                    attempt,
+                    request.idempotency_key,
+                    type(error).__name__,
+                )
+                raise
+            else:
+                logger.info(
+                    "transfer resolved after %d attempt(s): idempotency_key=%s "
+                    "transfer_id=%s status=%s",
+                    attempt,
+                    request.idempotency_key,
+                    result.id,
+                    result.status.value,
+                )
+                return result
 
         assert last_error is not None
+        logger.error(
+            "transfer retries exhausted after %d attempts: idempotency_key=%s",
+            self.max_attempts,
+            request.idempotency_key,
+        )
         raise RetryExhaustedError(self.max_attempts) from last_error
 
     async def _attempt(
