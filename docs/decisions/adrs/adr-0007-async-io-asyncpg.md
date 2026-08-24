@@ -72,6 +72,9 @@ designed around. FastAPI's async-native design is used as intended instead of wo
 **Bad / risks:** `await` now has to thread through every layer (handler → service → repository) —
 more upfront ceremony than sync routes would have needed, though this now correctly reflects a
 real I/O-bound driver rather than being complexity introduced for its own sake. CI must provide a
-runner with Docker socket access for `testcontainers`-backed tests — unchanged risk from what
-ADR-0001 already flagged (Robustrade's self-hosted runner's Docker support is unverified from
-this fork). `requirements-dev.txt` gains `asyncpg`, `pytest-asyncio`, and `testcontainers[postgres]`.
+runner with Docker socket access for `testcontainers`-backed tests. This is a separate risk from,
+and additional to, the one ADR-0001 already flagged: ADR-0001 could only confirm that the
+`runs-on: [actions_runner_dev_new]` runner's *existence* is unverified from this fork — this ADR
+separately notes that even if it exists, its Docker socket access is equally unverified (corrected
+on review — a prior version of this ADR conflated the two risks as if ADR-0001 had already covered
+this one). `requirements-dev.txt` gains `asyncpg`, `pytest-asyncio`, and `testcontainers[postgres]`.

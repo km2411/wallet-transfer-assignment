@@ -45,6 +45,27 @@ polling endpoint exists. Consequence for any future read API (optional transfer 
 transfer will only ever be *observed* as `PROCESSED` or `FAILED` — nothing else can see it before
 it resolves, so `PENDING` never appears in a read.
 
+**Response status code (closes a gap found on review — no ADR previously specified this):**
+`POST /transfers` returns `200 OK` for *both* terminal outcomes, `PROCESSED` and `FAILED` alike —
+the response body's `status` field carries which one, plus a `failureReason` (e.g.
+`"INSUFFICIENT_FUNDS"`) when `FAILED`. A `FAILED` transfer is not a service failure: the request
+was well-formed, addressed two wallets that both exist, and was fully and correctly processed — it
+resolved to a legitimate business outcome the caller needs to handle, not an error the transport
+layer needs to signal. Reserving 4xx/5xx for what they're actually for keeps the status-code
+contract meaningful:
+
+- `200` — `PROCESSED` or `FAILED` (see body for which, and `failureReason` if `FAILED`).
+- `404` — a referenced wallet doesn't exist (ADR-0003); nothing persisted.
+- `409` — the idempotency key was reused for a different logical request (ADR-0002).
+- `503` — bounded retry exhausted under lock contention (ADR-0003); nothing persisted, safe to
+  retry with the same key.
+- `4xx` (exact code decided in ADR-0005's OpenAPI spec) — pure request-shape validation failure
+  (ADR-0002's validation boundary); nothing persisted.
+
+This also keeps ADR-0002's idempotent replay simple: replaying a key whose transfer resolved to
+`FAILED` returns the same `200` with the same body — replay never produces a different status
+code than the original request did.
+
 ## Consequences
 
 **Good:** trivially satisfies "safe under retries and duplicates," since nothing is ever left in

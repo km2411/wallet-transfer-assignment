@@ -94,7 +94,7 @@ constraints (ADR-0004) work, and a mocked DB cannot prove that.
 ### Fixture design (repository / integration / end-to-end tiers)
 
 - **Container lifecycle:** one Postgres `testcontainers` instance, scoped to the test *session*
-  (not per-test) — starting a fresh container per test is too slow to sustain the CT1-CT6
+  (not per-test) — starting a fresh container per test is too slow to sustain the CT1-CT7
   concurrency scenarios (ADR-0003), which each already run multiple concurrent operations.
   Flyway migrations (ADR-0004) are applied once, immediately after the container is ready.
 - **Per-test isolation:** a transaction-rollback-per-test pattern (the common fast-isolation
@@ -110,22 +110,28 @@ constraints (ADR-0004) work, and a mocked DB cannot prove that.
   serially — CT1/CT2/CT6 (ADR-0003) drive their concurrent attempts via `asyncio.gather` over
   multiple coroutines, each pulling its own connection from the shared `asyncpg` pool, so the
   operations are genuinely in flight at once, not just sequential calls that happen to be
-  unawaited.
+  unawaited. CT7 needs the same, plus one explicit synchronization point (not `asyncio.gather`
+  alone) to land the injected retry inside the original request's inter-attempt gap
+  deterministically, rather than relying on timing luck.
 - **Parameterized tests** (`pytest.mark.parametrize`) cover scenario *families* rather than one
   hard-coded case per test: CT1's fan-in count (e.g. `[2, 5, 20]` concurrent attempts), CT4/CT5's
   idempotency payload variants (identical payload vs. a differing field per case), and the
-  validation-boundary scenarios from ADR-0002 (self-transfer, non-positive amount, non-existent
-  wallet, malformed body) as one parametrized "rejected before any transaction" test rather than
-  four near-duplicate ones.
-- **CI enforcement:** `TEST_CMD` (`make test`) must run this full tier, not just the fast
+  pure-validation scenarios from ADR-0002 (malformed body, self-transfer, non-positive amount) as
+  one parametrized "rejected before any transaction" test. Non-existent wallet is deliberately
+  **not** folded into that same group (inconsistency fixed on review) — it takes a different path
+  (transaction opens, the idempotency record is inserted, the lock lookup reports "not found,"
+  everything rolls back) and gets its own case asserting the rollback actually happened: no
+  transfer row, no idempotency record, no ledger entries persist after the `404`.
+- **CI enforcement:** `TEST_CMD` (`just test`) must run this full tier, not just the fast
   fake-backed service tests — CI is only a meaningful gate if it actually exercises the real
   Postgres/`asyncpg` path, not just the parts that happen to be fast. This requires the CI runner
   to have Docker socket access for `testcontainers` to start a container at all; see ADR-0007's
-  Consequences for the same open risk already flagged against Robustrade's self-hosted runner.
+  Consequences — this Docker-access risk is separate from, and additional to, the runner-identity
+  risk ADR-0001 flagged, not something ADR-0001 already covered.
 
 ### Required test scenarios (domain, service/fake, ledger, end-to-end)
 
-The critical-section concurrency scenarios (CT1-CT6) belong to ADR-0003, since they're specific
+The critical-section concurrency scenarios (CT1-CT7) belong to ADR-0003, since they're specific
 to its locking mechanism. The rest of the required matrix belongs here:
 
 **Domain tier (pure, no I/O):**
@@ -135,19 +141,27 @@ to its locking mechanism. The rest of the required matrix belongs here:
   transition is rejected.
 
 **Service tier (in-memory fake — deterministically simulating race *outcomes*, not real
-concurrency; real concurrency is CT1-CT6's job):**
+concurrency; real concurrency is CT1-CT7's job):**
 - **ST1** — fake reports "idempotency key already recorded, same fingerprint" → service returns
   the cached terminal result without calling any wallet-locking logic.
 - **ST2** — fake reports "idempotency key already recorded, different fingerprint" → service
   returns `409`.
-- **ST3** — fake raises a simulated `lock_timeout` on attempt 1, succeeds on attempt 2 → service
-  retries and succeeds within the bounded attempt count.
-- **ST4** — fake raises `lock_timeout`/`deadlock_detected` on every attempt → service exhausts
-  retries and surfaces a distinct `503`, not a generic error (ADR-0003).
+- **ST3** — fake raises a simulated retryable error (`lock_timeout`, `deadlock_detected`, or a
+  connection-pool-acquire timeout — parametrized over all three, ADR-0003) on attempt 1, succeeds
+  on attempt 2 → service retries and succeeds within the bounded attempt count.
+- **ST4** — fake raises the same retryable error on every attempt → service exhausts retries and
+  surfaces a distinct `503`, not a generic error (ADR-0003) — regardless of which of the three
+  error classes triggered it.
 - **ST5** — insufficient funds → service resolves the transfer to `FAILED`, writes zero ledger
   entries, does not retry.
-- **ST6** — self-transfer / non-positive amount / non-existent wallet → rejected before any
-  repository call, no idempotency record attempted (ADR-0002's validation boundary).
+- **ST6** — self-transfer / non-positive amount → rejected before any repository call, no
+  idempotency record attempted (ADR-0002's validation boundary).
+- **ST7** — non-existent `fromWalletId`/`toWalletId` (inconsistency fixed on review — this was
+  previously folded into ST6, which wrongly claimed no repository call happens for this case
+  too): the fake's idempotency-record insert succeeds first, since this is a well-formed request;
+  the fake's wallet-lock call then reports "not found," and the service rolls back everything
+  from this attempt — including the fake's idempotency record — and returns `404`. Proves the
+  rollback is real, not a persisted `FAILED` transfer (ADR-0002's validation boundary, ADR-0003).
 
 **Ledger-correctness tier (repository/integration + end-to-end):**
 - **LT1** — after any `PROCESSED` transfer, exactly 2 ledger entries exist, one `DEBIT` one

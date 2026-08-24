@@ -57,7 +57,7 @@ and concurrency in ADR-0001 through ADR-0004.
 - Request/response Pydantic models are **generated from** `openapi/spec.yaml` via
   `datamodel-code-generator` into a dedicated, never-hand-edited module (exact path decided during
   implementation, e.g. `src/wallet_transfer/handlers/generated_models.py`) — regenerated via
-  `make generate-models` whenever the spec changes, not committed-then-drifted.
+  `just generate-models` whenever the spec changes, not committed-then-drifted.
 - Route handlers themselves are **hand-written** FastAPI routes using those generated models for
   typing — keeps the handler layer thin and inside the layered architecture / `.importlinter`
   contract, rather than being replaced by generated server code.
@@ -82,6 +82,6 @@ setups don't guard against.
 (`openapi/spec.yaml` and the generated models) — mitigated by treating the models as a pure build
 artifact (never hand-edited, regenerated on every spec change) and by the drift check catching any
 place implementation and contract disagree. Adds `datamodel-code-generator` as a dev dependency
-and a `make generate-models` step to the workflow. A generated client SDK for `scripts/simulate.py`
+and a `just generate-models` step to the workflow. A generated client SDK for `scripts/simulate.py`
 (ADR-0003's demo tooling) is a natural extension of this same spec but is left optional, not
 committed, to stay inside the time-box.

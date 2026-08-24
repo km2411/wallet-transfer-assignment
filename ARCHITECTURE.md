@@ -52,3 +52,9 @@ Purpose: entities, state transitions, validation rules. Depends on nothing else 
   named so it reads as a deliberate boundary, not an oversight.
 - **No background worker or queue** (ADR-0008) — every transfer resolves within the request that
   created it; `PENDING` is never a durably observable status.
+- **Single currency, implicit — multi-currency is explicitly out of scope.** `wallets`,
+  `transfers`, and `ledger_entries` (ADR-0004) have no `currency` column: every wallet and every
+  transfer is assumed to be the same, unspecified currency. No conversion, no per-currency
+  balance, no check that a transfer's two wallets share a currency — there's nothing to compare.
+  Not solved here; named explicitly so it reads as a deliberate boundary rather than something
+  discovered by surprise later.

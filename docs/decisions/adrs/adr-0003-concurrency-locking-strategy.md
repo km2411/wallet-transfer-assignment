@@ -54,15 +54,30 @@ Within a single database transaction per transfer attempt:
   **ascending `wallet_id` order**, regardless of transfer direction. This is what actually
   prevents the deadlock case: two opposite-direction transfers on the same pair would otherwise
   each hold one wallet's lock while waiting on the other's.
-- Set an explicit `lock_timeout` (e.g. 2s) for the transaction. A request blocked behind another
-  fails fast with a distinct, retryable error instead of queuing indefinitely.
+- Set an explicit `lock_timeout` (e.g. 2s) for the transaction (`SET LOCAL lock_timeout`, once per
+  transaction — scoping clarified on review). It governs every lock wait inside that transaction,
+  not just the wallet `SELECT ... FOR UPDATE` calls: the same timeout also bounds how long a
+  concurrent duplicate can block on ADR-0002's idempotency-key unique-insert conflict, since that
+  wait is a lock wait too. A request blocked behind another fails fast with a distinct, retryable
+  error instead of queuing indefinitely.
 - The service layer wraps the transaction attempt in a **bounded retry** (e.g. up to 3 attempts,
   exponential backoff with jitter, via `asyncio.sleep()` — never a blocking sleep, per ADR-0007)
-  for exactly two error classes: a `lock_timeout` and Postgres's
-  own `deadlock_detected` (kept as defense-in-depth — the ordering rule above should make this
-  unreachable, but a future code path that doesn't follow it would otherwise fail silently wrong
-  instead of loudly retrying). **Insufficient funds is not retried** — it's a legitimate terminal
-  result (`FAILED`), not a transient error.
+  for three error classes: a `lock_timeout`, Postgres's own `deadlock_detected` (kept as
+  defense-in-depth — the ordering rule above should make this unreachable, but a future code path
+  that doesn't follow it would otherwise fail silently wrong instead of loudly retrying), and a
+  connection-pool-acquire timeout (added on review — see the pool-sizing note below for why this
+  is a distinct failure mode, not covered by the other two). **Insufficient funds is not
+  retried** — it's a legitimate terminal result (`FAILED`), not a transient error, and is returned
+  as `200` (ADR-0008): a correctly handled business outcome, not an HTTP-level failure.
+- **Connection-pool sizing (gap found on review):** ADR-0007's `asyncpg.create_pool` has a finite
+  size; CT6 (below) drives 50-100 concurrent attempts against one wallet, which previously had no
+  stated relationship to pool capacity. If the pool is smaller than the concurrency a request
+  actually needs to sustain, a request can fail trying to *acquire a connection* before it ever
+  reaches the row lock — a distinct failure mode from `lock_timeout`, which is why it's now its
+  own retryable class above rather than silently surfacing as an unhandled exception instead of
+  the documented `503`. Pool `min_size`/`max_size` should be set comfortably above the concurrency
+  ceiling this project actually exercises — e.g. `max_size=120` against CT6's 100-attempt upper
+  bound — with real headroom, not exactly matched to it.
 - **Wallet existence is not a business-rule outcome (fixed on review — see ADR-0002's validation
   boundary).** `SELECT ... FOR UPDATE WHERE id = :wallet_id` returning zero rows means the wallet
   doesn't exist. This is discovered *inside* the transaction (locking is the only place that
@@ -106,6 +121,16 @@ Within a single database transaction per transfer attempt:
   loser gets `409`, no transfer is created for it.
 - **CT6** — high-concurrency fan-in stress (e.g. 50-100 concurrent attempts against one wallet, via
   `scripts/simulate.py`): final balance reconciles exactly against the expected value.
+- **CT7** — a client-initiated retry (same idempotency key) is injected while the *original*
+  request is between its own internal bounded-retry attempts — i.e. after one internal attempt
+  has hit `lock_timeout` and rolled back (idempotency record included), before the next internal
+  attempt begins. Needs an explicit synchronization point in the test (a hook fired right after
+  the first attempt's rollback, not a wall-clock sleep) to land the injected retry deterministically
+  in that gap, rather than relying on timing luck. Exactly one transfer is still created; both the
+  original request (once it completes) and the injected retry receive the same terminal result; no
+  duplicate ledger entries — proving the idempotency guarantee holds across an arbitrary
+  interleaving of client- and server-initiated attempts on the same key, not just the
+  two-top-level-requests case CT4 covers (ADR-0002).
 
 ## Consequences
 
